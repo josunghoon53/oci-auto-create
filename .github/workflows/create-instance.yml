@@ -36,7 +36,12 @@ jobs:
             --sort-by TIMECREATED \
             --sort-order DESC \
             --query 'data[0].id' \
-            --raw-output 2>/dev/null)
+            --raw-output 2>&1)
+
+          if [ -z "$IMAGE_ID" ]; then
+            echo "❌ 이미지 ID 조회 실패"
+            exit 1
+          fi
 
           echo "이미지 ID: $IMAGE_ID"
 
