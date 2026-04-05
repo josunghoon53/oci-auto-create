@@ -58,6 +58,7 @@ jobs:
 
           RESULT=$(oci compute instance launch \
             --compartment-id "$COMPARTMENT_ID" \
+            --availability-domain "AVuZ:AP-CHUNCHEON-1-AD-1" \
             --display-name "my-server" \
             --shape "$SHAPE" \
             --shape-config '{"ocpus": 4, "memoryInGBs": 24}' \
