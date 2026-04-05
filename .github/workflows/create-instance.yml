@@ -1,0 +1,68 @@
+name: OCI A1 인스턴스 자동 생성
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # 5분마다 실행
+  workflow_dispatch:  # 수동 실행 가능
+
+jobs:
+  create-instance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: OCI CLI 설치
+        run: pip install oci-cli --quiet
+
+      - name: OCI 설정
+        run: |
+          mkdir -p ~/.oci
+          echo "${{ secrets.OCI_CONFIG }}" > ~/.oci/config
+          echo "${{ secrets.OCI_API_KEY }}" > ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/config
+
+      - name: 인스턴스 생성 시도
+        id: create
+        run: |
+          COMPARTMENT_ID="${{ secrets.OCI_COMPARTMENT_ID }}"
+          SUBNET_ID="${{ secrets.OCI_SUBNET_ID }}"
+          SHAPE="VM.Standard.A1.Flex"
+
+          # Ubuntu 22.04 이미지 ID 자동 조회
+          IMAGE_ID=$(oci compute image list \
+            --compartment-id "$COMPARTMENT_ID" \
+            --operating-system "Canonical Ubuntu" \
+            --operating-system-version "22.04" \
+            --shape "$SHAPE" \
+            --sort-by TIMECREATED \
+            --sort-order DESC \
+            --query 'data[0].id' \
+            --raw-output 2>/dev/null)
+
+          echo "이미지 ID: $IMAGE_ID"
+
+          RESULT=$(oci compute instance launch \
+            --compartment-id "$COMPARTMENT_ID" \
+            --display-name "my-server" \
+            --shape "$SHAPE" \
+            --shape-config '{"ocpus": 4, "memoryInGBs": 24}' \
+            --subnet-id "$SUBNET_ID" \
+            --image-id "$IMAGE_ID" \
+            --ssh-authorized-keys-file <(echo "${{ secrets.OCI_SSH_PUBLIC_KEY }}") \
+            --assign-public-ip true \
+            2>&1)
+
+          if echo "$RESULT" | grep -q '"lifecycle-state"'; then
+            echo "success=true" >> $GITHUB_OUTPUT
+            echo "✅ 성공!"
+            echo "$RESULT" | grep -E '"display-name"|"lifecycle-state"'
+          else
+            echo "success=false" >> $GITHUB_OUTPUT
+            echo "❌ 실패: $(echo "$RESULT" | grep '"message"' | head -1)"
+          fi
+
+      - name: 텔레그램 알림 (성공 시)
+        if: steps.create.outputs.success == 'true'
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d text="✅ OCI A1 인스턴스 생성 성공! SSH로 접속하세요."
