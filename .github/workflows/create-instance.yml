@@ -20,9 +20,16 @@ jobs:
           chmod 600 ~/.oci/oci_api_key.pem
           chmod 600 ~/.oci/config
 
+      - name: OCI 연결 테스트
+        run: |
+          set +e
+          oci iam region list --output table
+          echo "연결 테스트 완료 (exit: $?)"
+
       - name: 인스턴스 생성 시도
         id: create
         run: |
+          set +e
           COMPARTMENT_ID="${{ secrets.OCI_COMPARTMENT_ID }}"
           SUBNET_ID="${{ secrets.OCI_SUBNET_ID }}"
           SHAPE="VM.Standard.A1.Flex"
@@ -36,14 +43,15 @@ jobs:
             --sort-by TIMECREATED \
             --sort-order DESC \
             --query 'data[0].id' \
-            --raw-output 2>&1)
+            --raw-output 2>/dev/null)
+
+          echo "이미지 ID: $IMAGE_ID"
 
           if [ -z "$IMAGE_ID" ]; then
             echo "❌ 이미지 ID 조회 실패"
-            exit 1
+            echo "success=false" >> $GITHUB_OUTPUT
+            exit 0
           fi
-
-          echo "이미지 ID: $IMAGE_ID"
 
           # SSH 공개키 임시 파일로 저장
           echo "${{ secrets.OCI_SSH_PUBLIC_KEY }}" > /tmp/ssh_key.pub
@@ -59,13 +67,14 @@ jobs:
             --assign-public-ip true \
             2>&1)
 
+          echo "결과: $RESULT"
+
           if echo "$RESULT" | grep -q '"lifecycle-state"'; then
             echo "success=true" >> $GITHUB_OUTPUT
             echo "✅ 성공!"
-            echo "$RESULT" | grep -E '"display-name"|"lifecycle-state"'
           else
             echo "success=false" >> $GITHUB_OUTPUT
-            echo "❌ 실패: $(echo "$RESULT" | grep '"message"' | head -1)"
+            echo "❌ 실패"
           fi
 
       - name: 텔레그램 알림 (성공 시)
