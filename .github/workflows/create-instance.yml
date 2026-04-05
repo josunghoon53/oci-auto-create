@@ -40,6 +40,9 @@ jobs:
 
           echo "이미지 ID: $IMAGE_ID"
 
+          # SSH 공개키 임시 파일로 저장
+          echo "${{ secrets.OCI_SSH_PUBLIC_KEY }}" > /tmp/ssh_key.pub
+
           RESULT=$(oci compute instance launch \
             --compartment-id "$COMPARTMENT_ID" \
             --display-name "my-server" \
@@ -47,7 +50,7 @@ jobs:
             --shape-config '{"ocpus": 4, "memoryInGBs": 24}' \
             --subnet-id "$SUBNET_ID" \
             --image-id "$IMAGE_ID" \
-            --ssh-authorized-keys-file <(echo "${{ secrets.OCI_SSH_PUBLIC_KEY }}") \
+            --ssh-authorized-keys-file /tmp/ssh_key.pub \
             --assign-public-ip true \
             2>&1)
 
